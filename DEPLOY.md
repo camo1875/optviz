@@ -4,8 +4,8 @@
 
 | 대상 | 방법 | 결과 |
 |---|---|---|
-| 코드를 보는 사람 | GitHub 저장소 | `https://github.com/<아이디>/optimizer-visualize` |
-| 애니메이션만 보는 사람 | GitHub Pages (같은 저장소의 `docs/` 폴더) | `https://<아이디>.github.io/optimizer-visualize/` |
+| 코드를 보는 사람 | GitHub 저장소 | `https://github.com/camo1875/optviz` |
+| 애니메이션만 보는 사람 | GitHub Pages (같은 저장소의 `docs/` 폴더) | `https://camo1875.github.io/optviz/` |
 
 웹 페이지는 계산을 모두 브라우저 안에서 하므로 서버가 필요 없고, GitHub Pages는 무료입니다.
 
@@ -36,13 +36,13 @@ git init -b main
 git add .
 git status               # .venv 가 목록에 없는지 확인
 git commit -m "보고서 코드 복원 및 개량판, 웹 시각화"
-gh repo create optimizer-visualize --public --source . --push \
+gh repo create optviz --public --source . --push \
   --description "딥러닝 옵티마이저 비교 시각화 (고등학교 수학과제연구, 2024)"
 ```
 
 ### 방법 B. 웹사이트에서 만들고 push
 
-1. https://github.com/new 에서 Repository name에 `optimizer-visualize`를 쓰고 **Public**을 선택합니다.
+1. https://github.com/new 에서 Repository name에 `optviz`를 쓰고 **Public**을 선택합니다.
    README, .gitignore, license는 **추가하지 않고** (이미 있음) Create repository를 누릅니다.
 2. 터미널에서:
    ```bash
@@ -50,7 +50,7 @@ gh repo create optimizer-visualize --public --source . --push \
    git init -b main
    git add .
    git commit -m "보고서 코드 복원 및 개량판, 웹 시각화"
-   git remote add origin https://github.com/<아이디>/optimizer-visualize.git
+   git remote add origin https://github.com/camo1875/optviz.git
    git push -u origin main
    ```
    비밀번호를 물으면 GitHub 비밀번호가 아니라 **Personal access token**을 넣어야 합니다
@@ -61,7 +61,7 @@ gh repo create optimizer-visualize --public --source . --push \
 1. 저장소 페이지 → **Settings** → 왼쪽 **Pages**
 2. Build and deployment → Source: **Deploy from a branch**
 3. Branch: **main**, 폴더: **/docs** → Save
-4. 1~2분 뒤 `https://<아이디>.github.io/optimizer-visualize/` 에서 열립니다.
+4. 1~2분 뒤 `https://camo1875.github.io/optviz/` 에서 열립니다.
 
 특정 실험으로 바로 여는 링크도 쓸 수 있습니다.
 
@@ -77,7 +77,7 @@ gh repo create optimizer-visualize --public --source . --push \
 
 ## 3. README에 링크 달기
 
-Pages 주소가 생기면 `README.md` 맨 위 "웹에서 바로 보기" 줄의 `<아이디>`를 실제 아이디로 바꾸고 다시 올리세요.
+README.md 맨 위 "웹에서 바로 보기" 줄에 이미 Pages 주소(`https://camo1875.github.io/optviz/`)가 들어 있습니다. Pages를 켜면 바로 동작합니다.
 
 ```bash
 git add README.md && git commit -m "웹 페이지 링크 추가" && git push

@@ -3,7 +3,7 @@
 이우고등학교 수학과제연구 보고서 **「The Review of Optimizer in Deep Learning」(2024)** 의 코드를 복원하고 개량한 프로젝트입니다.
 보고서 원문(PDF)은 저장소에 포함하지 않았습니다.
 
-**웹에서 바로 보기: https://<아이디>.github.io/optimizer-visualize/**: 설치 없이 브라우저에서 함수, 옵티마이저, 출발점, 학습률을 골라 애니메이션으로 비교할 수 있습니다.
+**웹에서 바로 보기: https://camo1875.github.io/optviz/**: 설치 없이 브라우저에서 함수, 옵티마이저, 출발점, 학습률을 골라 애니메이션으로 비교할 수 있습니다.
 
 ![보고서 4.6 실험 애니메이션](results/landscape_report.gif)
 
