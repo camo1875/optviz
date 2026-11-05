@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; font: 14px system-ui, sans-serif; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<title>Optimizer Visualize</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="딥러닝 옵티마이저가 손실 함수의 최솟값을 찾아가는 과정을 애니메이션으로 비교합니다.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+</head>
+<body>
+<style>
+/* Layout: 왼쪽 설정 패널 + 오른쪽 무대(등고선 지도, 재생 바, 3D·손실 그래프, 결과 표). 좁은 화면에서는 무대가 먼저 오고 설정이 아래로. */
+:root {
+  --bg: #eef2f1;
+  --panel: #fbfcfc;
+  --ink: #15242b;
+  --muted: #5a6b72;
+  --line: #d2dbdb;
+  --accent: #0e6973;
+  --accent-ink: #ffffff;
+  --terrain-low: #8fbdb6;
+  --terrain-high: #f5f7f3;
+  --contour: #15242b;
+  --ok: #2b8a3e;
+  --warn: #c76a00;
+  --bad: #c92a2a;
+  --idle: #7b8a90;
+  --star: #f2b705;
+  --c-GD: #d9480f;
+  --c-Momentum: #2b8a3e;
+  --c-NAG: #1864ab;
+  --c-Adagrad: #862e9c;
+  --c-RMSProp: #c2255c;
+  --c-Adam: #15242b;
+  --c-Nadam: #0b7285;
+  --font-display: "Gowun Batang", "Nanum Myeongjo", "AppleMyungjo", serif;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1417; --panel: #142026; --ink: #e2eaeb; --muted: #8fa1a6; --line: #24343b;
+    --accent: #5cc2c9; --accent-ink: #0d1417;
+    --terrain-low: #08525c; --terrain-high: #46555b; --contour: #e2eaeb;
+    --ok: #51cf66; --warn: #ffa94d; --bad: #ff6b6b; --idle: #8fa1a6; --star: #ffd43b;
+    --c-GD: #ff8a4c; --c-Momentum: #51cf66; --c-NAG: #4dabf7; --c-Adagrad: #da77f2;
+    --c-RMSProp: #f06595; --c-Adam: #f1f3f5; --c-Nadam: #3bc9db;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1417; --panel: #142026; --ink: #e2eaeb; --muted: #8fa1a6; --line: #24343b;
+  --accent: #5cc2c9; --accent-ink: #0d1417;
+  --terrain-low: #08525c; --terrain-high: #46555b; --contour: #e2eaeb;
+  --ok: #51cf66; --warn: #ffa94d; --bad: #ff6b6b; --idle: #8fa1a6; --star: #ffd43b;
+  --c-GD: #ff8a4c; --c-Momentum: #51cf66; --c-NAG: #4dabf7; --c-Adagrad: #da77f2;
+  --c-RMSProp: #f06595; --c-Adam: #f1f3f5; --c-Nadam: #3bc9db;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap {
+  max-width: 1320px; margin: 0 auto;
+  padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; margin-bottom: 20px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 4px; }
+h1 { font-family: var(--font-display); font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin: 0; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
+
+.presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+.presets button {
+  font: 500 13px/1 var(--font-body); color: var(--ink); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer;
+}
+.presets button:hover { border-color: var(--accent); }
+.presets button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+.stage { order: 1; min-width: 0; display: grid; gap: 16px; }
+.controls { order: 2; min-width: 0; }
+@media (min-width: 1000px) {
+  .layout { grid-template-columns: 300px minmax(0, 1fr); }
+  .controls { order: 0; }
+}
+
+/* 설정 패널 */
+.controls { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 18px 18px; align-self: start; }
+.group { padding-top: 16px; display: grid; gap: 10px; }
+.group + .group { border-top: 1px solid var(--line); margin-top: 16px; }
+.group h2 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.fn-list { display: grid; gap: 6px; }
+.fn-opt { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.fn-opt:has(input:checked) { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.fn-opt input { accent-color: var(--accent); margin: 0; }
+.fn-opt b { font-weight: 600; font-size: 14px; }
+.fn-opt span { grid-column: 2; font-family: var(--font-mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.opt-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.opt-list label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.opt-list input { accent-color: var(--accent); margin: 0; }
+.swatch { width: 14px; height: 4px; border-radius: 2px; flex: none; }
+.field { display: grid; gap: 4px; }
+.field-top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.field-top output, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.field small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+.xy { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.xy label { display: grid; gap: 2px; font-size: 13px; }
+.xy input { width: 100%; font: 14px var(--font-mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.btn-quiet { font: 500 13px var(--font-body); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
+.btn-quiet:hover { border-color: var(--accent); }
+details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+details[open] summary { margin-bottom: 10px; }
+details .field + .field { margin-top: 10px; }
+
+/* 무대 */
+.map-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.map-box { position: relative; display: flex; justify-content: center; }
+#map { display: block; cursor: crosshair; touch-action: manipulation; }
+.readout { position: absolute; left: 10px; top: 10px; font: 12px var(--font-mono); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; pointer-events: none; font-variant-numeric: tabular-nums; }
+.hint { position: absolute; right: 10px; top: 10px; font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; pointer-events: none; }
+.player { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.play { width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--accent); color: var(--accent-ink); cursor: pointer; display: grid; place-items: center; flex: none; }
+.play svg { width: 16px; height: 16px; fill: currentColor; }
+#scrub { flex: 1 1 200px; min-width: 0; }
+.stepnum { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 11ch; text-align: right; }
+.player select { font: 13px var(--font-body); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.caption { margin: 0; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 14px; }
+.caption b { color: var(--accent); font-weight: 600; margin-right: 6px; }
+.caption:empty { display: none; }
+
+.duo { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 720px) { .duo { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.fig { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 8px; min-width: 0; }
+.fig h3 { margin: 0 4px 6px; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.fig h3 span { font-weight: 400; color: var(--muted); }
+.fig canvas { display: block; width: 100%; }
+#surf { cursor: grab; touch-action: none; }
+#surf:active { cursor: grabbing; }
+
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+th { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+td.num { font-variant-numeric: tabular-nums; }
+.name { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; padding: 3px 10px; border-radius: 999px; border: 1px solid currentColor; }
+.chip.global { color: var(--ok); }
+.chip.local { color: var(--warn); }
+.chip.moving, .chip.failed { color: var(--idle); }
+.chip.diverged { color: var(--bad); }
+
+/* 설명 */
+.explain { margin-top: 36px; display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .explain { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.explain h2 { font-family: var(--font-display); font-size: 22px; margin: 0 0 10px; }
+.explain p { margin: 0 0 10px; max-width: 64ch; }
+.legend { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.legend li { display: flex; gap: 10px; align-items: baseline; }
+.legend .mk { font-family: var(--font-mono); width: 1.5em; text-align: center; flex: none; }
+.optdefs { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+.optdefs dt { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.optdefs dd { margin: 0; color: var(--muted); }
+footer { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Optimizer Visualize</p>
+      <h1>옵티마이저는 어떻게 최솟값을 찾아갈까</h1>
+      <p class="lede">딥러닝이 학습할 때 쓰는 최적화 알고리즘 일곱 가지가 같은 지형 위에서 가장 낮은 곳을 찾아 내려가는 모습을 비교해 보세요. 지도를 클릭하면 그 자리에서 다시 출발해요.</p>
+    </div>
+  </header>
+
+  <ul class="presets" id="presets" aria-label="미리 준비된 실험"></ul>
+
+  <div class="layout">
+    <aside class="controls" aria-label="설정">
+      <div class="group">
+        <h2>손실 함수</h2>
+        <div class="fn-list" id="fnList"></div>
+      </div>
+      <div class="group">
+        <h2>옵티마이저</h2>
+        <div class="opt-list" id="optList"></div>
+      </div>
+      <div class="group">
+        <h2>출발점</h2>
+        <div class="xy">
+          <label for="sx">x<input id="sx" type="number" step="0.05" inputmode="decimal"></label>
+          <label for="sy">y<input id="sy" type="number" step="0.05" inputmode="decimal"></label>
+          <button class="btn-quiet" id="resetStart" type="button">기본값</button>
+        </div>
+      </div>
+      <div class="group">
+        <h2>학습 설정</h2>
+        <div class="field">
+          <div class="field-top"><label for="lr">학습률 η · GD, Momentum, NAG</label><output id="lrOut" class="num"></output></div>
+          <input id="lr" type="range" min="-4" max="0" step="0.05">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="alr">학습률 η · Adagrad, RMSProp, Adam, Nadam</label><output id="alrOut" class="num"></output></div>
+          <input id="alr" type="range" min="-4" max="0" step="0.05">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="steps">반복 횟수</label><output id="stepsOut" class="num"></output></div>
+          <input id="steps" type="range" min="50" max="3000" step="50">
+        </div>
+        <details id="adv">
+          <summary>세부 하이퍼파라미터</summary>
+          <div class="field">
+            <div class="field-top"><label for="gamma">Momentum · NAG 관성 γ</label><output id="gammaOut" class="num"></output></div>
+            <input id="gamma" type="range" min="0" max="0.99" step="0.01">
+          </div>
+          <div class="field">
+            <div class="field-top"><label for="rho">RMSProp 감쇠율 γ</label><output id="rhoOut" class="num"></output></div>
+            <input id="rho" type="range" min="0" max="0.999" step="0.001">
+          </div>
+          <div class="field">
+            <div class="field-top"><label for="b1">Adam · Nadam β₁</label><output id="b1Out" class="num"></output></div>
+            <input id="b1" type="range" min="0" max="0.999" step="0.001">
+            <small>이전 이동 방향을 얼마나 기억할지. 보고서는 0.9와 0.99를 비교했어요.</small>
+          </div>
+          <div class="field">
+            <div class="field-top"><label for="b2">Adam · Nadam β₂</label><output id="b2Out" class="num"></output></div>
+            <input id="b2" type="range" min="0.9" max="0.9999" step="0.0001">
+          </div>
+        </details>
+        <button class="btn-quiet" id="resetAll" type="button">이 함수의 기본 설정으로</button>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <section class="map-card" aria-label="등고선 지도">
+        <div class="map-box" id="mapBox">
+          <canvas id="map" aria-label="손실 함수 등고선과 옵티마이저 경로. 클릭하면 출발점이 바뀝니다." role="img"></canvas>
+          <div class="readout" id="readout" hidden></div>
+          <div class="hint" id="hint">클릭해서 출발점 바꾸기</div>
+        </div>
+        <div class="player">
+          <button class="play" id="play" type="button" aria-label="재생"></button>
+          <input id="scrub" type="range" min="0" step="1" value="0" aria-label="반복 위치">
+          <span class="stepnum" id="stepnum"></span>
+          <label for="speed"><select id="speed" aria-label="재생 속도">
+            <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+          </select></label>
+        </div>
+        <p class="caption" id="caption"></p>
+      </section>
+
+      <div class="duo">
+        <figure class="fig" style="margin:0">
+          <h3>3D 지형 <span>드래그해서 돌리기</span></h3>
+          <canvas id="surf"></canvas>
+        </figure>
+        <figure class="fig" style="margin:0">
+          <h3>최솟값까지 남은 높이 <span>f(Θₙ) − f<sub>min</sub>, 로그 눈금</span></h3>
+          <canvas id="loss"></canvas>
+        </figure>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>옵티마이저</th><th>현재 위치 (x, y)</th><th>f − f<sub>min</sub></th><th>상태</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <section class="explain">
+    <div>
+      <h2>무엇을 보고 있나요</h2>
+      <p>인공지능은 '손실 함수'의 값이 가장 작아지는 지점을 찾으면서 학습해요. 여기서는 그 손실 함수를 변수 두 개(x, y)짜리 지형으로 그렸어요. 색이 진할수록 낮은 곳이고, 가는 선은 같은 높이를 잇는 등고선이에요.</p>
+      <p>옵티마이저는 눈을 가린 채 발밑의 기울기(그래디언트)만 느끼며 내려가는 등산객과 같아요. 기울기를 어떻게 쓰느냐에 따라 같은 곳에서 출발해도 도착하는 곳이 달라져요.</p>
+      <ul class="legend">
+        <li><span class="mk" style="color:var(--star)">★</span><span><b>최솟값</b>: 지형 전체에서 가장 낮은 곳. 여기가 목표예요.</span></li>
+        <li><span class="mk">○</span><span><b>극솟값</b>: 주변보다는 낮지만 가장 낮지는 않은 곳. 빠지면 나오기 어려워요.</span></li>
+        <li><span class="mk">✕</span><span><b>안장점</b>: 한 방향으로는 오르막, 다른 방향으로는 내리막인 고개. 기울기가 0이라 멈추기 쉬워요.</span></li>
+        <li><span class="mk">■</span><span><b>출발점</b>: 모든 옵티마이저가 여기서 함께 출발해요.</span></li>
+      </ul>
+    </div>
+    <div>
+      <h2>옵티마이저 한 줄 정리</h2>
+      <dl class="optdefs" id="optDefs"></dl>
+    </div>
+  </section>
+
+  <footer>2024년 고등학교 수학과제연구 보고서 「The Review of Optimizer in Deep Learning」의 실험을 웹에서 직접 해볼 수 있게 옮겼어요. 계산은 모두 이 페이지 안에서 이루어져요.</footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+// ───────── 손실 함수 (보고서 4.6 + 추가 함수) ─────────
+const FUNCS = {
+  report: {
+    label: "보고서 함수", formula: "x⁴ − ½x³ − ¾x² − ⅛x + y² − ½",
+    f: (x, y) => x ** 4 - x ** 3 / 2 - 0.75 * x * x - x / 8 + y * y - 0.5,
+    g: (x, y) => [4 * x ** 3 - 1.5 * x * x - 1.5 * x - 0.125, 2 * y],
+    xlim: [-1.4, 1.4], ylim: [-1, 1], start: [-0.9, 0.5], lr: 0.01, alr: 0.01, steps: 500,
+    minima: [[0.855834, 0], [-0.386315, 0]], saddles: [[-0.094519, 0]],
+  },
+  bowl: {
+    label: "길쭉한 그릇", formula: "x²/20 + y²",
+    f: (x, y) => x * x / 20 + y * y,
+    g: (x, y) => [x / 10, 2 * y],
+    xlim: [-5, 5], ylim: [-2, 2], start: [-4.5, 1.5], lr: 0.1, alr: 0.1, steps: 300,
+    minima: [[0, 0]], saddles: [],
+  },
+  saddle: {
+    label: "안장점", formula: "x² + y⁴/4 − y²/2",
+    f: (x, y) => x * x + y ** 4 / 4 - y * y / 2,
+    g: (x, y) => [2 * x, y ** 3 - y],
+    xlim: [-2, 2], ylim: [-1.6, 1.6], start: [1.5, 0.001], lr: 0.05, alr: 0.05, steps: 300,
+    minima: [[0, 1], [0, -1]], saddles: [[0, 0]],
+  },
+  rosenbrock: {
+    label: "Rosenbrock 계곡", formula: "(1 − x)² + 100(y − x²)²",
+    f: (x, y) => (1 - x) ** 2 + 100 * (y - x * x) ** 2,
+    g: (x, y) => [-2 * (1 - x) - 400 * x * (y - x * x), 200 * (y - x * x)],
+    xlim: [-2, 2], ylim: [-1, 3], start: [-1.5, 2], lr: 0.001, alr: 0.02, steps: 2000,
+    minima: [[1, 1]], saddles: [],
+  },
+};
+for (const F of Object.values(FUNCS)) {
+  F.minVals = F.minima.map(([x, y]) => F.f(x, y));
+  F.fmin = Math.min(...F.minVals);
+  F.isGlobal = F.minVals.map(v => v - F.fmin < 1e-6);
+}
+
+// ───────── 옵티마이저 (보고서 4장의 식 그대로) ─────────
+const OPTS = [
+  { key: "GD", adaptive: false, desc: "기울기의 반대 방향으로 일정한 비율만큼 한 걸음씩 내려가요." },
+  { key: "Momentum", adaptive: false, desc: "이전에 움직이던 방향을 관성처럼 이어가요. 작은 언덕은 넘어갈 수 있어요." },
+  { key: "NAG", adaptive: false, desc: "관성만큼 미리 가본 자리의 기울기를 써서, Momentum보다 덜 출렁여요." },
+  { key: "Adagrad", adaptive: true, desc: "많이 움직인 방향일수록 보폭을 줄여요. 갈수록 너무 느려지는 게 약점이에요." },
+  { key: "RMSProp", adaptive: true, desc: "Adagrad와 같지만 오래된 기록은 잊어서, 보폭이 0으로 줄어들지 않아요." },
+  { key: "Adam", adaptive: true, desc: "Momentum의 관성과 RMSProp의 보폭 조절을 합쳤어요. 가장 널리 쓰여요." },
+  { key: "Nadam", adaptive: true, desc: "Adam에 NAG처럼 미리 가보는 아이디어를 더했어요. 보고서 이후에 추가했어요." },
+];
+const REPORT_OPTS = ["GD", "Momentum", "NAG", "Adagrad", "RMSProp", "Adam"];
+
+function makeStepper(key, P) {
+  const eps = 1e-8;
+  let v = [0, 0], G = [0, 0], M = [0, 0], V = [0, 0], n = 0;
+  const lr = P.lr;
+  switch (key) {
+    case "GD":
+      return (t, g) => { const d = g(t[0], t[1]); return [t[0] - lr * d[0], t[1] - lr * d[1]]; };
+    case "Momentum":
+      return (t, g) => {
+        const d = g(t[0], t[1]);
+        v = [P.gamma * v[0] - lr * d[0], P.gamma * v[1] - lr * d[1]];
+        return [t[0] + v[0], t[1] + v[1]];
+      };
+    case "NAG":
+      return (t, g) => {
+        const d = g(t[0] + P.gamma * v[0], t[1] + P.gamma * v[1]);
+        v = [P.gamma * v[0] - lr * d[0], P.gamma * v[1] - lr * d[1]];
+        return [t[0] + v[0], t[1] + v[1]];
+      };
+    case "Adagrad":
+      return (t, g) => {
+        const d = g(t[0], t[1]);
+        G = [G[0] + d[0] * d[0], G[1] + d[1] * d[1]];
+        return [t[0] - lr * d[0] / Math.sqrt(G[0] + eps), t[1] - lr * d[1] / Math.sqrt(G[1] + eps)];
+      };
+    case "RMSProp":
+      return (t, g) => {
+        const d = g(t[0], t[1]);
+        G = [P.rho * G[0] + (1 - P.rho) * d[0] * d[0], P.rho * G[1] + (1 - P.rho) * d[1] * d[1]];
+        return [t[0] - lr * d[0] / Math.sqrt(G[0] + eps), t[1] - lr * d[1] / Math.sqrt(G[1] + eps)];
+      };
+    default: // Adam, Nadam
+      return (t, g) => {
+        n += 1;
+        const d = g(t[0], t[1]);
+        const c1 = 1 - P.b1 ** n, c2 = 1 - P.b2 ** n, out = [0, 0];
+        for (let i = 0; i < 2; i++) {
+          M[i] = P.b1 * M[i] + (1 - P.b1) * d[i];
+          V[i] = P.b2 * V[i] + (1 - P.b2) * d[i] * d[i];
+          const mh = M[i] / c1, vh = V[i] / c2;
+          const m = key === "Nadam" ? P.b1 * mh + (1 - P.b1) * d[i] / c1 : mh;
+          out[i] = t[i] - lr * m / Math.sqrt(vh + eps);
+        }
+        return out;
+      };
+  }
+}
+
+const TOL = 0.05;
+function nearestMin(F, p) {
+  let best = -1, bd = Infinity;
+  F.minima.forEach(([x, y], i) => { const d = Math.hypot(p[0] - x, p[1] - y); if (d < bd) { bd = d; best = i; } });
+  return bd < TOL ? best : -1;
+}
+
+function simulate(F, opt, S) {
+  const P = { lr: opt.adaptive ? S.alr : S.lr, gamma: S.gamma, rho: S.rho, b1: S.b1, b2: S.b2 };
+  const step = makeStepper(opt.key, P);
+  let t = S.start.slice(), diverged = false;
+  const path = [t];
+  for (let n = 1; n <= S.steps; n++) {
+    t = step(t, F.g);
+    if (!isFinite(t[0]) || !isFinite(t[1]) || Math.abs(t[0]) > 1e6 || Math.abs(t[1]) > 1e6) { diverged = true; break; }
+    path.push(t);
+  }
+  const loss = path.map(p => Math.max(F.f(p[0], p[1]) - F.fmin, 1e-16));
+  // 마지막 위치가 극소점이면, 그 뒤로 계속 그 근처에 머문 첫 스텝을 '도착'으로 본다
+  const final = diverged ? -1 : nearestMin(F, path[path.length - 1]);
+  let arrivedAt = Infinity;
+  if (final >= 0) {
+    const [mx, my] = F.minima[final];
+    let i = path.length - 1;
+    while (i > 0 && Math.hypot(path[i - 1][0] - mx, path[i - 1][1] - my) < TOL) i--;
+    arrivedAt = i;
+  }
+  return { key: opt.key, path, loss, diverged, final, arrivedAt };
+}
+
+// ───────── 상태 ─────────
+const S = { fn: "report", opts: new Set(REPORT_OPTS), start: [-0.9, 0.5], lr: 0.01, alr: 0.01, steps: 500, gamma: 0.9, rho: 0.9, b1: 0.9, b2: 0.999 };
+let runs = [], k = 0, playing = false, lastT = 0;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const PRESETS = [
+  { id: "report", label: "보고서 4.6 그대로", set: { fn: "report", opts: REPORT_OPTS },
+    caption: "Momentum과 NAG만 안장점(✕)을 넘어 최솟값(★)에 도착해요. GD, RMSProp, Adam은 극솟값(○)에 갇히고, Adagrad는 점점 느려져 500번 안에 도착하지 못해요." },
+  { id: "adam-099", label: "Adam β₁ = 0.99", set: { fn: "report", opts: ["Momentum", "Adam"], b1: 0.99, steps: 1000 },
+    caption: "보고서 37쪽 실험이에요. β₁을 키우면 관성이 커져 극솟값을 넘어가요. 다만 500번째에는 아직 최솟값 주변을 맴돌고, 660번째쯤에야 자리를 잡아요." },
+  { id: "adam-lr", label: "β₁은 그대로, 보폭만 크게", set: { fn: "report", opts: ["GD", "Adam"], alr: 0.08 },
+    caption: "β₁ = 0.9 그대로 학습률만 0.01에서 0.08로 키워도 Adam이 극솟값을 넘어가요. 탈출 여부는 관성과 보폭의 조합으로 정해져요. (0.065까지는 갇혀요)" },
+  { id: "near-local", label: "극솟값 근처에서 출발", set: { fn: "report", opts: REPORT_OPTS, start: [-0.6, 0.6] },
+    caption: "출발점을 조금만 옮겨도 결과가 바뀌어요. 여기서는 관성이 쌓일 거리가 짧아서 Momentum과 NAG도 극솟값에 갇혀요." },
+  { id: "bowl", label: "길쭉한 그릇", set: { fn: "bowl", opts: REPORT_OPTS },
+    caption: "y 방향은 가파르고 x 방향은 완만해요. GD는 완만한 x 방향으로 아주 느리게 가요. Adagrad, RMSProp, Adam은 방향마다 보폭을 맞춰서 처음엔 대각선으로 곧장 향해요. 다만 Adagrad는 보폭이 계속 줄어 도착하지 못하고, RMSProp은 학습률만큼 계속 흔들려요." },
+  { id: "saddle", label: "안장점 탈출", set: { fn: "saddle", opts: REPORT_OPTS.concat("Nadam") },
+    caption: "출발점이 안장점 바로 옆이라 기울기가 거의 0이에요. GD는 130번 가까이 머뭇거리지만, 기울기 크기로 보폭을 나누는 RMSProp과 Adam은 10번 안팎이면 빠져나가요." },
+  { id: "rosenbrock", label: "Rosenbrock 계곡", set: { fn: "rosenbrock", opts: ["GD", "Momentum", "RMSProp", "Adam", "Nadam"] },
+    caption: "바나나 모양의 좁은 계곡이에요. 계곡 안으로 들어오기는 쉽지만, 거의 평평한 바닥을 따라 (1, 1)까지 가기가 어려워요." },
+];
+
+// ───────── DOM ─────────
+const $ = id => document.getElementById(id);
+const el = { map: $("map"), surf: $("surf"), loss: $("loss"), mapBox: $("mapBox"), readout: $("readout"), hint: $("hint"),
+  play: $("play"), scrub: $("scrub"), stepnum: $("stepnum"), speed: $("speed"), caption: $("caption"), rows: $("rows") };
+const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>';
+const ICON_REPLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.2 3.7l1.4.5A4 4 0 1 0 8 4v2L4.5 3.25 8 .5z"/></svg>';
+
+$("presets").innerHTML = PRESETS.map(p => `<li><button type="button" data-preset="${p.id}" aria-pressed="false">${p.label}</button></li>`).join("");
+$("fnList").innerHTML = Object.entries(FUNCS).map(([id, F]) =>
+  `<label class="fn-opt"><input type="radio" name="fn" value="${id}" id="fn-${id}"><b>${F.label}</b><span>${F.formula}</span></label>`).join("");
+$("optList").innerHTML = OPTS.map(o =>
+  `<label><input type="checkbox" value="${o.key}" id="opt-${o.key}"><span class="swatch" style="background:var(--c-${o.key})"></span>${o.key}</label>`).join("");
+$("optDefs").innerHTML = OPTS.map(o =>
+  `<dt><span class="swatch" style="background:var(--c-${o.key})"></span>${o.key}</dt><dd>${o.desc}</dd>`).join("");
+
+const fmt = (v, d = 3) => (Math.abs(v) < 5e-5 ? 0 : v).toFixed(d);
+const fmtLr = v => String(+v.toPrecision(2));
+const SUP = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+const pow10 = e => "10" + String(e).split("").map(c => SUP[c]).join("");
+const sci = v => { if (v <= 1e-15) return "0"; const e = Math.floor(Math.log10(v)); return v >= 0.01 ? v.toFixed(3) : (v / 10 ** e).toFixed(1) + "×" + pow10(e); };
+
+function syncControls() {
+  $("fn-" + S.fn).checked = true;
+  for (const o of OPTS) $("opt-" + o.key).checked = S.opts.has(o.key);
+  $("sx").value = +S.start[0].toFixed(4);
+  $("sy").value = +S.start[1].toFixed(4);
+  $("lr").value = Math.log10(S.lr); $("lrOut").value = fmtLr(S.lr);
+  $("alr").value = Math.log10(S.alr); $("alrOut").value = fmtLr(S.alr);
+  $("steps").value = S.steps; $("stepsOut").value = S.steps;
+  $("gamma").value = S.gamma; $("gammaOut").value = S.gamma.toFixed(2);
+  $("rho").value = S.rho; $("rhoOut").value = S.rho.toFixed(3);
+  $("b1").value = S.b1; $("b1Out").value = S.b1.toFixed(3);
+  $("b2").value = S.b2; $("b2Out").value = S.b2.toFixed(4);
+}
+
+function fnDefaults(id) {
+  const F = FUNCS[id];
+  Object.assign(S, { fn: id, start: F.start.slice(), lr: F.lr, alr: F.alr, steps: F.steps, gamma: 0.9, rho: 0.9, b1: 0.9, b2: 0.999 });
+}
+
+// ───────── 계산 + 재생 ─────────
+function recompute({ autoplay }) {
+  const F = FUNCS[S.fn];
+  runs = OPTS.filter(o => S.opts.has(o.key)).map(o => simulate(F, o, S));
+  el.scrub.max = S.steps;
+  if (autoplay && !reduceMotion) { k = 0; setPlaying(true); } else { k = S.steps; setPlaying(false); }
+  draw();
+}
+
+function setPlaying(on) {
+  playing = on;
+  if (on && k >= S.steps) k = 0;
+  el.play.innerHTML = on ? ICON_PAUSE : (k >= S.steps ? ICON_REPLAY : ICON_PLAY);
+  el.play.setAttribute("aria-label", on ? "일시정지" : "재생");
+  if (on) { lastT = performance.now(); requestAnimationFrame(tick); }
+}
+
+function tick(now) {
+  if (!playing) return;
+  const dt = Math.min((now - lastT) / 1000, 0.1);
+  lastT = now;
+  k = Math.min(S.steps, k + dt * (S.steps / 10) * +el.speed.value); // 1×: 전체를 약 10초에
+  if (k >= S.steps) setPlaying(false);
+  draw();
+  if (playing) requestAnimationFrame(tick);
+}
+
+// ───────── 색 ─────────
+let C = {};
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement);
+  const get = n => cs.getPropertyValue(n).trim();
+  C = { ink: get("--ink"), muted: get("--muted"), line: get("--line"), panel: get("--panel"), bg: get("--bg"), star: get("--star"),
+    low: hexRgb(get("--terrain-low")), high: hexRgb(get("--terrain-high")), contour: hexRgb(get("--contour")),
+    opt: Object.fromEntries(OPTS.map(o => [o.key, get("--c-" + o.key)])) };
+}
+function hexRgb(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map(c => c + c).join(""); const n = parseInt(h, 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const rgb = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+
+function fitCanvas(cv, w, h) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.style.width = w + "px"; cv.style.height = h + "px";
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h, dpr };
+}
+
+// ───────── 등고선 지도 ─────────
+let M = null, terrain = null;
+function layoutMap() {
+  const F = FUNCS[S.fn];
+  const rx = F.xlim[1] - F.xlim[0], ry = F.ylim[1] - F.ylim[0];
+  let w = el.mapBox.clientWidth, h = w * ry / rx;
+  const maxH = Math.max(280, Math.min(560, window.innerHeight * 0.62));
+  if (h > maxH) { h = maxH; w = h * rx / ry; }
+  M = fitCanvas(el.map, Math.floor(w), Math.floor(h));
+  M.F = F;
+  M.toPx = (x, y) => [(x - F.xlim[0]) / rx * M.w, (1 - (y - F.ylim[0]) / ry) * M.h];
+  M.toXY = (px, py) => [F.xlim[0] + px / M.w * rx, F.ylim[0] + (1 - py / M.h) * ry];
+  buildTerrain();
+}
+
+function levelsFor(F, sampleN = 4000) {
+  const vals = [];
+  const n = Math.ceil(Math.sqrt(sampleN));
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const x = F.xlim[0] + (i + 0.5) / n * (F.xlim[1] - F.xlim[0]);
+    const y = F.ylim[0] + (j + 0.5) / n * (F.ylim[1] - F.ylim[0]);
+    vals.push(F.f(x, y));
+  }
+  vals.sort((a, b) => a - b);
+  const N = 26, th = [];
+  for (let i = 1; i < N; i++) th.push(vals[Math.floor((i / N) ** 2 * (vals.length - 1))]); // 낮은 곳을 촘촘하게
+  return th;
+}
+
+function buildTerrain() {
+  const F = M.F, W = el.map.width, H = el.map.height;
+  const th = levelsFor(F), N = th.length + 1;
+  const lev = new Uint8Array(W * H);
+  for (let j = 0; j < H; j++) {
+    const y = F.ylim[1] - (j + 0.5) / H * (F.ylim[1] - F.ylim[0]);
+    for (let i = 0; i < W; i++) {
+      const z = F.f(F.xlim[0] + (i + 0.5) / W * (F.xlim[1] - F.xlim[0]), y);
+      let lo = 0, hi = th.length;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (th[m] < z) lo = m + 1; else hi = m; }
+      lev[j * W + i] = lo;
+    }
+  }
+  const off = document.createElement("canvas");
+  off.width = W; off.height = H;
+  const octx = off.getContext("2d"), img = octx.createImageData(W, H), d = img.data;
+  const palette = [];
+  for (let l = 0; l < N; l++) palette.push(mix(C.low, C.high, Math.pow(l / (N - 1), 0.8)));
+  const lineW = Math.max(1, Math.round(M.dpr * 0.8));
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const p = j * W + i, l = lev[p];
+    let c = palette[l];
+    const r = i + lineW < W ? lev[p + lineW] : l, b = j + lineW < H ? lev[p + lineW * W] : l;
+    if (r !== l || b !== l) c = mix(c, C.contour, 0.28);
+    d[p * 4] = c[0]; d[p * 4 + 1] = c[1]; d[p * 4 + 2] = c[2]; d[p * 4 + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  terrain = off;
+}
+
+function niceStep(range, target = 5) {
+  const raw = range / target, p = 10 ** Math.floor(Math.log10(raw));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= raw) return m * p;
+  return 10 * p;
+}
+
+function drawMarker(ctx, kind, x, y) {
+  ctx.save();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = C.ink;
+  if (kind === "global") {
+    ctx.fillStyle = C.star; ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const r = i % 2 ? 4.5 : 10, a = -Math.PI / 2 + i * Math.PI / 5; ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a)); }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (kind === "local") {
+    ctx.fillStyle = C.panel; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); ctx.stroke();
+  } else if (kind === "saddle") {
+    ctx.lineWidth = 4; ctx.strokeStyle = C.panel;
+    for (const s of [1, 0]) { ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6); ctx.stroke(); ctx.lineWidth = 2; ctx.strokeStyle = C.ink; }
+  } else if (kind === "start") {
+    ctx.fillStyle = C.ink; ctx.strokeStyle = C.panel; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeRect(x - 5, y - 5, 10, 10);
+  }
+  ctx.restore();
+}
+
+function drawMap() {
+  const { ctx, w, h, F } = M;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(terrain, 0, 0, w, h);
+  // 눈금
+  ctx.font = "11px " + getComputedStyle(document.body).getPropertyValue("--font-mono");
+  ctx.fillStyle = C.muted;
+  const sx = niceStep(F.xlim[1] - F.xlim[0], 6), sy = niceStep(F.ylim[1] - F.ylim[0], 5);
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  for (let x = Math.ceil(F.xlim[0] / sx) * sx; x <= F.xlim[1] - sx / 2; x += sx) {
+    if (Math.abs(x - F.xlim[0]) < sx / 2) continue;
+    ctx.fillText(+x.toFixed(2), M.toPx(x, 0)[0], h - 4);
+  }
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  for (let y = Math.ceil(F.ylim[0] / sy) * sy; y <= F.ylim[1] - sy / 2; y += sy) {
+    if (Math.abs(y - F.ylim[0]) < sy / 2) continue;
+    ctx.fillText(+y.toFixed(2), 5, M.toPx(0, y)[1]);
+  }
+  F.saddles.forEach(([x, y]) => drawMarker(ctx, "saddle", ...M.toPx(x, y)));
+  F.minima.forEach(([x, y], i) => drawMarker(ctx, F.isGlobal[i] ? "global" : "local", ...M.toPx(x, y)));
+  // 경로
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const r of runs) {
+    const n = Math.min(Math.floor(k), r.path.length - 1);
+    ctx.strokeStyle = C.opt[r.key]; ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) { const [px, py] = M.toPx(...r.path[i]); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+    ctx.stroke();
+  }
+  for (const r of runs) {
+    const n = Math.min(Math.floor(k), r.path.length - 1);
+    const [px, py] = M.toPx(...r.path[n]);
+    ctx.beginPath(); ctx.arc(px, py, 5, 0, 7);
+    ctx.fillStyle = C.opt[r.key]; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = C.panel; ctx.stroke();
+  }
+  drawMarker(ctx, "start", ...M.toPx(...S.start));
+}
+
+// ───────── 3D 지형 ─────────
+const view = { yaw: -0.75, pitch: 0.85 };
+let D = null, surfCache = null, H3 = null;
+const GRID = 34;
+
+function heightMap(F) {
+  // 높이 차이가 큰 함수(Rosenbrock 등)도 모양이 보이도록 log(1 + z/s) 로 눌러서 그린다
+  const zs = [];
+  for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+    zs.push(F.f(F.xlim[0] + i / GRID * (F.xlim[1] - F.xlim[0]), F.ylim[0] + j / GRID * (F.ylim[1] - F.ylim[0])));
+  }
+  const zmin = Math.min(...zs, F.fmin), rel = zs.map(z => z - zmin).sort((a, b) => a - b);
+  const s = rel[rel.length >> 1] || 1, hmax = Math.log1p(rel[rel.length - 1] / s) || 1;
+  return { zs, h: z => Math.log1p(Math.max(z - zmin, 0) / s) / hmax };
+}
+
+function layoutSurf() {
+  const w = el.surf.parentElement.clientWidth - 24;
+  D = fitCanvas(el.surf, Math.max(200, w), Math.max(200, Math.round(w * 0.72)));
+  buildSurf();
+}
+
+function proj(X, Y, Z) {
+  const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw), cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
+  const x1 = X * cy - Y * sy, y1 = X * sy + Y * cy, z = (Z - 0.45) * 1.0;
+  const sc = Math.min(D.w, D.h * 1.25) * 0.34;
+  return [D.w / 2 + x1 * sc, D.h * 0.52 - (z * cp + y1 * sp) * sc, y1 * cp - z * sp];
+}
+const norm = (F, x, y) => [(x - F.xlim[0]) / (F.xlim[1] - F.xlim[0]) * 2 - 1, (y - F.ylim[0]) / (F.ylim[1] - F.ylim[0]) * 2 - 1];
+
+function buildSurf() {
+  const F = FUNCS[S.fn];
+  H3 = heightMap(F);
+  const off = document.createElement("canvas");
+  off.width = el.surf.width; off.height = el.surf.height;
+  const ctx = off.getContext("2d");
+  ctx.setTransform(D.dpr, 0, 0, D.dpr, 0, 0);
+  const P = [], Hn = [];
+  for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
+    const hv = H3.h(H3.zs[j * (GRID + 1) + i]);
+    Hn.push(hv);
+    P.push(proj(i / GRID * 2 - 1, j / GRID * 2 - 1, hv));
+  }
+  const quads = [];
+  for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
+    const a = j * (GRID + 1) + i, idx = [a, a + 1, a + GRID + 2, a + GRID + 1];
+    quads.push({ idx, depth: idx.reduce((s, q) => s + P[q][2], 0) / 4, h: idx.reduce((s, q) => s + Hn[q], 0) / 4 });
+  }
+  quads.sort((p, q) => q.depth - p.depth);
+  const edge = rgb(mix(C.low, C.contour, 0.35));
+  ctx.lineWidth = 0.6;
+  for (const q of quads) {
+    ctx.beginPath();
+    q.idx.forEach((v, n) => n ? ctx.lineTo(P[v][0], P[v][1]) : ctx.moveTo(P[v][0], P[v][1]));
+    ctx.closePath();
+    ctx.fillStyle = rgb(mix(C.low, C.high, Math.pow(q.h, 0.8)));
+    ctx.fill();
+    ctx.strokeStyle = edge; ctx.globalAlpha = 0.45; ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  surfCache = off;
+}
+
+function drawSurf() {
+  const { ctx, w, h } = D, F = FUNCS[S.fn];
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(surfCache, 0, 0, w, h);
+  ctx.lineJoin = "round";
+  const lift = 0.012;
+  for (const r of runs) {
+    const n = Math.min(Math.floor(k), r.path.length - 1);
+    ctx.strokeStyle = C.opt[r.key]; ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i <= n; i++) {
+      const [x, y] = r.path[i];
+      if (x < F.xlim[0] || x > F.xlim[1] || y < F.ylim[0] || y > F.ylim[1]) { started = false; continue; }
+      const [X, Y] = norm(F, x, y), [px, py] = proj(X, Y, H3.h(F.f(x, y)) + lift);
+      started ? ctx.lineTo(px, py) : ctx.moveTo(px, py); started = true;
+    }
+    ctx.stroke();
+    const [x, y] = r.path[n];
+    if (x >= F.xlim[0] && x <= F.xlim[1] && y >= F.ylim[0] && y <= F.ylim[1]) {
+      const [X, Y] = norm(F, x, y), [px, py] = proj(X, Y, H3.h(F.f(x, y)) + lift);
+      ctx.beginPath(); ctx.arc(px, py, 4, 0, 7); ctx.fillStyle = C.opt[r.key]; ctx.fill();
+      ctx.lineWidth = 1.2; ctx.strokeStyle = C.panel; ctx.stroke();
+    }
+  }
+}
+
+// ───────── 손실 그래프 ─────────
+let L = null;
+function layoutLoss() {
+  const w = el.loss.parentElement.clientWidth - 24;
+  L = fitCanvas(el.loss, Math.max(200, w), Math.max(200, Math.round(w * 0.72)));
+}
+
+function drawLoss() {
+  const { ctx, w, h } = L;
+  ctx.clearRect(0, 0, w, h);
+  if (!runs.length) return;
+  let lo = Infinity, hi = -Infinity;
+  for (const r of runs) for (const v of r.loss) { if (v > 1e-15) lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (!isFinite(lo)) lo = 1e-12;
+  const e0 = Math.max(Math.floor(Math.log10(lo)), -14), e1 = Math.max(Math.ceil(Math.log10(hi)), e0 + 1);
+  const ml = 46, mr = 10, mt = 8, mb = 24, pw = w - ml - mr, ph = h - mt - mb;
+  const X = n => ml + n / S.steps * pw;
+  const Y = v => mt + (1 - (Math.log10(Math.max(v, 10 ** e0)) - e0) / (e1 - e0)) * ph;
+  ctx.font = "11px " + getComputedStyle(document.body).getPropertyValue("--font-mono");
+  ctx.fillStyle = C.muted; ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+  const every = Math.ceil((e1 - e0) / 6);
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let e = e0; e <= e1; e += every) {
+    const y = Y(10 ** e);
+    ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(w - mr, y); ctx.stroke();
+    ctx.fillText(pow10(e), ml - 6, y);
+  }
+  const st = niceStep(S.steps, 5);
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let n = 0; n <= S.steps; n += st) ctx.fillText(n, X(n), h - mb + 6);
+  // 현재 위치 세로선
+  ctx.strokeStyle = C.muted; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(X(k), mt); ctx.lineTo(X(k), mt + ph); ctx.stroke(); ctx.setLineDash([]);
+  for (const r of runs) {
+    const n = Math.min(Math.floor(k), r.loss.length - 1);
+    ctx.strokeStyle = C.opt[r.key]; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) i ? ctx.lineTo(X(i), Y(r.loss[i])) : ctx.moveTo(X(i), Y(r.loss[i]));
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(X(n), Y(r.loss[n]), 3.5, 0, 7); ctx.fillStyle = C.opt[r.key]; ctx.fill();
+  }
+}
+
+// ───────── 결과 표 ─────────
+function statusOf(r) {
+  const n = Math.min(Math.floor(k), r.path.length - 1);
+  const F = FUNCS[S.fn];
+  if (n >= r.arrivedAt) {
+    const g = F.isGlobal[r.final];
+    return { cls: g ? "global" : "local", text: `${g ? "최솟값" : "극솟값"} 도착 · ${r.arrivedAt}번째` };
+  }
+  if (r.diverged && k >= r.path.length - 1) return { cls: "diverged", text: `발산 · ${r.path.length}번째` };
+  if (k >= S.steps) return { cls: "failed", text: "도착하지 못함" };
+  return { cls: "moving", text: "이동 중" };
+}
+
+let lastRowKey = "";
+function drawRows() {
+  const html = runs.map(r => {
+    const n = Math.min(Math.floor(k), r.path.length - 1), p = r.path[n], s = statusOf(r);
+    return `<tr><td><span class="name"><span class="swatch" style="background:var(--c-${r.key})"></span>${r.key}</span></td>`
+      + `<td class="num">(${fmt(p[0])}, ${fmt(p[1])})</td><td class="num">${sci(r.loss[n])}</td>`
+      + `<td><span class="chip ${s.cls}">${s.text}</span></td></tr>`;
+  }).join("") || `<tr><td colspan="4">왼쪽에서 옵티마이저를 하나 이상 골라 주세요.</td></tr>`;
+  if (html !== lastRowKey) { el.rows.innerHTML = html; lastRowKey = html; }
+}
+
+function draw() {
+  if (!M || !D || !L) return;
+  drawMap(); drawSurf(); drawLoss(); drawRows();
+  el.scrub.value = Math.floor(k);
+  el.stepnum.textContent = `${Math.floor(k)} / ${S.steps}`;
+  if (!playing) el.play.innerHTML = k >= S.steps ? ICON_REPLAY : ICON_PLAY;
+}
+
+function layoutAll() { layoutMap(); layoutSurf(); layoutLoss(); }
+function relayout() { readTokens(); layoutAll(); draw(); }
+
+// ───────── 프리셋 ─────────
+function applyPreset(id) {
+  const p = PRESETS.find(q => q.id === id);
+  if (!p) return false;
+  fnDefaults(p.set.fn);
+  for (const [key, val] of Object.entries(p.set)) if (key !== "fn") S[key] = key === "opts" ? new Set(val) : Array.isArray(val) ? val.slice() : val;
+  markPreset(id);
+  el.caption.innerHTML = `<b>볼 것</b>${p.caption}`;
+  syncControls();
+  layoutAll();
+  recompute({ autoplay: true });
+  return true;
+}
+function markPreset(id) {
+  document.querySelectorAll("[data-preset]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.preset === id)));
+  if (!id) el.caption.innerHTML = "";
+}
+
+// ───────── 이벤트 ─────────
+$("presets").addEventListener("click", e => {
+  const b = e.target.closest("[data-preset]");
+  if (!b) return;
+  if (location.hash === "#" + b.dataset.preset) applyPreset(b.dataset.preset);
+  else location.hash = b.dataset.preset; // hashchange에서 적용
+});
+window.addEventListener("hashchange", () => applyPreset(location.hash.slice(1)));
+
+function changed(opts = {}) { markPreset(null); recompute({ autoplay: false, ...opts }); }
+
+$("fnList").addEventListener("change", e => {
+  fnDefaults(e.target.value);
+  syncControls(); layoutAll();
+  markPreset(null); recompute({ autoplay: true });
+});
+$("optList").addEventListener("change", e => {
+  e.target.checked ? S.opts.add(e.target.value) : S.opts.delete(e.target.value);
+  changed();
+});
+for (const id of ["sx", "sy"]) $(id).addEventListener("change", () => {
+  const x = parseFloat($("sx").value), y = parseFloat($("sy").value);
+  if (isFinite(x) && isFinite(y)) { S.start = [x, y]; changed({ autoplay: true }); }
+});
+$("resetStart").addEventListener("click", () => { S.start = FUNCS[S.fn].start.slice(); syncControls(); changed({ autoplay: true }); });
+$("resetAll").addEventListener("click", () => { fnDefaults(S.fn); syncControls(); changed({ autoplay: true }); });
+
+const sliders = {
+  lr: v => { S.lr = +(10 ** v).toPrecision(2); $("lrOut").value = fmtLr(S.lr); },
+  alr: v => { S.alr = +(10 ** v).toPrecision(2); $("alrOut").value = fmtLr(S.alr); },
+  steps: v => { S.steps = Math.round(v); $("stepsOut").value = S.steps; },
+  gamma: v => { S.gamma = v; $("gammaOut").value = v.toFixed(2); },
+  rho: v => { S.rho = v; $("rhoOut").value = v.toFixed(3); },
+  b1: v => { S.b1 = v; $("b1Out").value = v.toFixed(3); },
+  b2: v => { S.b2 = v; $("b2Out").value = v.toFixed(4); },
+};
+for (const [id, set] of Object.entries(sliders)) $(id).addEventListener("input", e => { set(+e.target.value); changed(); });
+
+el.play.addEventListener("click", () => setPlaying(!playing));
+el.scrub.addEventListener("input", () => { k = +el.scrub.value; setPlaying(false); draw(); });
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && !e.target.closest("input, select, textarea, button")) { e.preventDefault(); setPlaying(!playing); }
+});
+
+// 지도: 마우스 위치 표시, 클릭하면 출발점 변경
+function eventXY(e) { const r = el.map.getBoundingClientRect(); return M.toXY(e.clientX - r.left, e.clientY - r.top); }
+el.map.addEventListener("pointermove", e => {
+  const [x, y] = eventXY(e);
+  el.readout.hidden = false;
+  el.readout.textContent = `x ${fmt(x, 2)}  y ${fmt(y, 2)}  f ${fmt(M.F.f(x, y), 3)}`;
+});
+el.map.addEventListener("pointerleave", () => { el.readout.hidden = true; });
+el.map.addEventListener("click", e => {
+  const [x, y] = eventXY(e);
+  S.start = [+x.toFixed(3), +y.toFixed(3)];
+  el.hint.hidden = true;
+  syncControls();
+  changed({ autoplay: true });
+});
+
+// 3D: 드래그해서 회전
+let drag = null;
+el.surf.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, yaw: view.yaw, pitch: view.pitch }; el.surf.setPointerCapture(e.pointerId); });
+el.surf.addEventListener("pointermove", e => {
+  if (!drag) return;
+  view.yaw = drag.yaw - (e.clientX - drag.x) * 0.01;
+  view.pitch = Math.min(1.45, Math.max(0.15, drag.pitch + (e.clientY - drag.y) * 0.01));
+  buildSurf(); drawSurf();
+});
+el.surf.addEventListener("pointerup", () => { drag = null; });
+el.surf.addEventListener("pointercancel", () => { drag = null; });
+
+// 크기·테마 변화
+let rzTimer = 0, lastW = 0;
+new ResizeObserver(() => {
+  const w = document.querySelector(".stage").clientWidth;
+  if (w === lastW) return;
+  lastW = w; clearTimeout(rzTimer); rzTimer = setTimeout(relayout, 80);
+}).observe(document.querySelector(".stage"));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", relayout);
+new MutationObserver(relayout).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+// ───────── 시작 ─────────
+readTokens();
+const startPreset = location.hash.slice(1);
+if (!applyPreset(startPreset)) applyPreset("report");
+})();
+</script>
+</body>
+</html>
