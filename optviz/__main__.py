@@ -1,11 +1,11 @@
-"""사용법:  python -m optviz <명령> [옵션]      (명령별 옵션은 python -m optviz <명령> -h)
+"""Usage:  python -m optviz <command> [options]      (options per command: python -m optviz <command> -h)
 
-  landscape   손실 함수 위에서 옵티마이저 경로 비교 (보고서 4.6)   --animate 로 애니메이션
-  regression  선형 회귀에서 BGD / SGD / mBGD 비교 (보고서 3.5)
-  beta1       Adam의 β1에 따른 경로 비교 (보고서 37쪽)
-  basin       모든 시작점에 대해 각 옵티마이저가 어디로 가는지 지도
-  hparam      학습률 × β1 조합별로 Adam이 어디로 가는지 지도
-  all         위 그림들을 모두 results/ 에 저장
+  landscape   compare optimizer paths on a loss surface (report 4.6); --animate for an animation
+  regression  BGD / SGD / mini-batch GD on linear regression (report 3.5)
+  beta1       Adam paths for different β1 (report p.37)
+  basin       map of where each optimizer ends up, for every start point
+  hparam      map of where Adam ends up, for every (learning rate, β1) pair
+  all         save all of the figures above to results/
 """
 import argparse
 import os
@@ -92,52 +92,52 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(sp, steps=True):
-        sp.add_argument("-f", "--function", choices=list(FUNCTIONS), default="report", help="손실 함수 (기본: report)")
-        sp.add_argument("--start", type=float, nargs=2, metavar=("X", "Y"), help="시작점 (기본: 함수별 기본값)")
+        sp.add_argument("-f", "--function", choices=list(FUNCTIONS), default="report", help="loss function (default: report)")
+        sp.add_argument("--start", type=float, nargs=2, metavar=("X", "Y"), help="start point (default: per function)")
         if steps:
-            sp.add_argument("--steps", type=int, help="반복 횟수 (기본: 함수별 기본값)")
-        sp.add_argument("--save", help="그림 저장 경로 (.png / 애니메이션은 .gif, .mp4). 없으면 창으로 띄움")
+            sp.add_argument("--steps", type=int, help="number of updates (default: per function)")
+        sp.add_argument("--save", help="save to this path (.png; animations .gif or .mp4) instead of opening a window")
 
-    s = sub.add_parser("landscape", help="옵티마이저 경로 비교")
+    s = sub.add_parser("landscape", help="compare optimizer paths")
     common(s)
     s.add_argument("-o", "--optimizers", default=",".join(O.REPORT_OPTIMIZERS),
-                   help=f"쉼표로 구분 (가능: {','.join(O.OPTIMIZERS)})")
-    s.add_argument("--lr", type=float, help="모든 옵티마이저의 학습률 (기본: 함수별 기본값)")
-    s.add_argument("--beta1", type=float, help="Adam/Nadam의 β1 (기본 0.9)")
-    s.add_argument("--animate", action="store_true", help="애니메이션으로 보기/저장")
-    s.add_argument("--frames", type=int, default=150, help="애니메이션 프레임 수")
+                   help=f"comma-separated (available: {','.join(O.OPTIMIZERS)})")
+    s.add_argument("--lr", type=float, help="learning rate for every optimizer (default: per function)")
+    s.add_argument("--beta1", type=float, help="β1 for Adam/Nadam (default 0.9)")
+    s.add_argument("--animate", action="store_true", help="show or save an animation")
+    s.add_argument("--frames", type=int, default=150, help="number of animation frames")
     s.set_defaults(func=cmd_landscape)
 
-    s = sub.add_parser("regression", help="선형 회귀에서 BGD/SGD/mBGD 비교")
-    s.add_argument("--report-data", action="store_true", help="보고서에 실린 12개 데이터 사용")
-    s.add_argument("--n", type=int, default=12, help="데이터 개수")
+    s = sub.add_parser("regression", help="BGD/SGD/mBGD on linear regression")
+    s.add_argument("--report-data", action="store_true", help="use the 12 data points printed in the report")
+    s.add_argument("--n", type=int, default=12, help="number of data points")
     s.add_argument("--batch-size", type=int, default=3)
     s.add_argument("--epochs", type=int, default=100)
     s.add_argument("--lr", type=float, default=0.01)
-    s.add_argument("--seed", type=int, help="난수 시드 (재현용)")
+    s.add_argument("--seed", type=int, help="random seed (for reproducibility)")
     s.add_argument("--save")
     s.set_defaults(func=cmd_regression)
 
-    s = sub.add_parser("beta1", help="Adam β1별 경로")
+    s = sub.add_parser("beta1", help="Adam paths for different β1")
     common(s)
     s.add_argument("--betas", type=float, nargs="+", default=[0.8, 0.9, 0.95, 0.99])
     s.add_argument("--lr", type=float)
     s.set_defaults(func=cmd_beta1)
 
-    s = sub.add_parser("basin", help="시작점별 도착 지도")
+    s = sub.add_parser("basin", help="where each optimizer ends up, per start point")
     s.add_argument("-f", "--function", choices=list(FUNCTIONS), default="report")
     s.add_argument("-o", "--optimizers", default=",".join(O.REPORT_OPTIMIZERS))
-    s.add_argument("--res", type=int, default=121, help="격자 해상도")
+    s.add_argument("--res", type=int, default=121, help="grid resolution")
     s.add_argument("--steps", type=int)
     s.add_argument("--save")
     s.set_defaults(func=cmd_basin)
 
-    s = sub.add_parser("hparam", help="학습률 × β1 지도")
+    s = sub.add_parser("hparam", help="learning rate × β1 map")
     common(s)
     s.add_argument("--optimizer", default="Adam", choices=["Adam", "Nadam"])
     s.set_defaults(func=cmd_hparam)
 
-    s = sub.add_parser("all", help="모든 그림을 저장")
+    s = sub.add_parser("all", help="save every figure")
     s.add_argument("--out", default="results")
     s.set_defaults(func=cmd_all)
 

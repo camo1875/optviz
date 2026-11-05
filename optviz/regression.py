@@ -1,19 +1,19 @@
-"""보고서 3.5: 선형 회귀 y = wx + b 에서 BGD / SGD / mini-batch GD 비교 (개량판)
+"""Report 3.5: BGD / SGD / mini-batch GD on linear regression y = wx + b (improved version)
 
-원본과 달라진 점
-- 예측값 배열이 정수형(np.full(..., 0))이라 소수점이 잘리던 버그를 없앴다
-- 세 방법은 '배치 크기만 다른 같은 알고리즘'이므로 함수 하나(train)로 합쳤다
+Changes from the original
+- Fixed the integer prediction array (np.full(..., 0)) that truncated predictions
+- The three methods are the same algorithm with different batch sizes, so one function (train) covers all
   (BGD: batch = n, SGD: batch = 1, mBGD: batch = B)
-- 1 epoch = 데이터 전체를 한 번 보는 것으로 통일했다.
-  원본은 세 방법 모두 epoch당 12번 업데이트해서, BGD가 전체 데이터를 12번 보는 등 비교 기준이 달랐다
-- 정답(최소제곱법 해)을 함께 그려 수렴 여부를 확인할 수 있다
-- 파라미터 공간 (w, b) 위의 MSE 등고선에 경로를 그려 4장의 시각화와 연결했다
-- seed로 결과를 재현할 수 있고, --report-data로 보고서에 실린 데이터를 그대로 쓸 수 있다
+- 1 epoch = one pass over the data for every method.
+  The original made 12 updates per epoch for all three, so BGD saw the whole data set 12 times per epoch
+- Plots the exact least-squares solution to check convergence
+- Draws the paths on the MSE contours in (w, b) parameter space, like the chapter 4 plots
+- Reproducible with --seed; --report-data uses the data printed in the report
 """
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 보고서 19쪽 실행 결과로 출력된 데이터
+# data printed in the report's output (p.19)
 REPORT_X = np.array([2.75398951, 3.54073911, 1.45452369, 2.55413803, 4.46473477, 4.48146544,
                      0.62792655, 1.03621439, 0.25733602, 2.20404922, 0.14938105, 2.28416612])
 REPORT_Y = np.array([7.14810379, 11.70683972, 5.44488913, 9.57198714, 13.64423796, 13.23971892,
@@ -23,32 +23,32 @@ METHOD_COLORS = {"BGD": "red", "SGD": "blue", "mBGD": "green"}
 
 
 def make_data(n=12, seed=None):
-    """y = 3x + 1 + (표준정규분포 오차), x ∈ [0, 5)"""
+    """y = 3x + 1 + (standard normal noise), x ∈ [0, 5)"""
     rng = np.random.default_rng(seed)
     x = rng.random(n) * 5
     return x, 3 * x + 1 + rng.standard_normal(n)
 
 
 def mse(w, b, x, y):
-    """w, b가 배열이어도 되도록 브로드캐스트한다 (등고선용)"""
+    """Broadcasts so that w and b can be arrays (for contour plots)."""
     w, b = np.asarray(w)[..., None], np.asarray(b)[..., None]
     return np.mean((w * x + b - y) ** 2, axis=-1)
 
 
 def gradient(w, b, x, y):
-    """L = mean((wx+b - y)^2) 일 때  ∂L/∂w = mean(2(ŷ-y)x),  ∂L/∂b = mean(2(ŷ-y))"""
+    """For L = mean((wx+b - y)^2):  ∂L/∂w = mean(2(ŷ-y)x),  ∂L/∂b = mean(2(ŷ-y))"""
     r = w * x + b - y
     return np.mean(2 * r * x), np.mean(2 * r)
 
 
 def train(x, y, batch_size, epochs=100, lr=0.01, w0=0.2, b0=0.8, rng=None):
-    """미니 배치 경사 하강법. 업데이트할 때마다 (epoch, w, b)를 기록해서 돌려준다."""
+    """Mini-batch gradient descent. Records (epoch, w, b) after every update."""
     rng = rng or np.random.default_rng()
     n = len(x)
     w, b = w0, b0
     hist = [(0.0, w, b)]
     for e in range(epochs):
-        order = rng.permutation(n)  # 매 epoch마다 데이터를 섞어서 배치로 나눈다
+        order = rng.permutation(n)  # shuffle every epoch, then split into batches
         for s in range(0, n, batch_size):
             batch = order[s:s + batch_size]
             gw, gb = gradient(w, b, x[batch], y[batch])
@@ -61,7 +61,7 @@ def compare(x, y, batch_size=3, epochs=100, lr=0.01, w0=0.2, b0=0.8, seed=None):
     rng = np.random.default_rng(seed)
     runs = {name: train(x, y, bs, epochs, lr, w0, b0, rng)
             for name, bs in [("BGD", len(x)), ("SGD", 1), ("mBGD", batch_size)]}
-    w_ols, b_ols = np.polyfit(x, y, 1)  # 최소제곱법으로 구한 정답
+    w_ols, b_ols = np.polyfit(x, y, 1)  # exact least-squares solution
 
     print(f"least squares (exact): w = {w_ols:.4f}, b = {b_ols:.4f}, MSE = {mse(w_ols, b_ols, x, y):.4f}")
     print(f"{'method':6s} {'updates':>8s} {'w':>8s} {'b':>8s} {'MSE':>8s}")
@@ -87,7 +87,7 @@ def compare(x, y, batch_size=3, epochs=100, lr=0.01, w0=0.2, b0=0.8, seed=None):
     ax_loss.set_ylabel("MSE - MSE(least squares)")
     ax_loss.set_title("loss gap (log scale)")
 
-    # 파라미터 공간 (w, b) 위의 손실 함수 등고선
+    # loss contours in (w, b) parameter space
     allh = np.concatenate(list(runs.values()))
     pad_w, pad_b = np.ptp(allh[:, 1]) * 0.1 + 0.1, np.ptp(allh[:, 2]) * 0.1 + 0.1
     W, B = np.meshgrid(np.linspace(allh[:, 1].min() - pad_w, allh[:, 1].max() + pad_w, 200),

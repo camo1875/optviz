@@ -1,16 +1,16 @@
-"""보고서 4장의 옵티마이저들.
+"""The optimizers from chapter 4 of the report.
 
-모든 연산이 원소별(Hadamard) 연산이라 theta는 (2,) 하나의 점이든 (N, 2) 여러 점이든 그대로 동작한다.
-하이퍼파라미터도 (N, 1) 배열로 주면 N개의 설정을 한 번에 돌릴 수 있다. (experiments.py 에서 사용)
+Every operation is element-wise (Hadamard), so theta can be a single point of shape (2,) or many points
+of shape (N, 2). Hyperparameters can also be (N, 1) arrays to run N settings at once (used in experiments.py).
 
-기호는 보고서를 따른다.  g = ∇f(Θ_{n-1}),  η = 학습률(lr)
+Notation follows the report:  g = ∇f(Θ_{n-1}),  η = learning rate (lr)
 """
 import numpy as np
 
 
 class Optimizer:
     name = "base"
-    adaptive = False  # 적응형 학습률(Adagrad 계열)인지. 기본 학습률을 고를 때 쓴다
+    adaptive = False  # adaptive learning rate (Adagrad family)? Used to pick the default learning rate
 
     def __init__(self, lr=0.01, eps=1e-8):
         self.lr = lr
@@ -21,7 +21,7 @@ class Optimizer:
         self.t = 0
 
     def step(self, theta, grad_fn):
-        """Θ_n = Θ_{n-1} + Δ 를 돌려준다."""
+        """Return Θ_n = Θ_{n-1} + Δ."""
         self.t += 1
         return theta + self.delta(theta, grad_fn)
 
@@ -107,7 +107,7 @@ class Adam(Optimizer):
     """M_n = β1 M_{n-1} + (1-β1) g,  V_n = β2 V_{n-1} + (1-β2) g⊙g
     M̂_n = M_n/(1-β1^n),  V̂_n = V_n/(1-β2^n),  Θ_n = Θ_{n-1} - η/√(V̂_n+ε) ⊙ M̂_n
 
-    ε를 루트 안에 넣는 것은 보고서 식을 따랐다. (PyTorch 등은 √V̂_n + ε. 결과 차이는 거의 없다)
+    ε sits inside the square root, as in the report. (PyTorch and others use √V̂_n + ε; the difference is negligible.)
     """
     name = "Adam"
     adaptive = True
@@ -134,8 +134,8 @@ class Adam(Optimizer):
 
 
 class Nadam(Adam):
-    """Adam + NAG (Dozat, 2016). 보고서에는 없는 추가 옵티마이저.
-    Momentum → NAG 처럼, M̂_n 대신 '한 걸음 앞의 모멘텀' β1 M̂_n + (1-β1) g/(1-β1^n) 을 쓴다.
+    """Adam + NAG (Dozat, 2016). Not part of the report.
+    Like Momentum → NAG, it uses the look-ahead momentum β1 M̂_n + (1-β1) g/(1-β1^n) instead of M̂_n.
     """
     name = "Nadam"
 
@@ -152,7 +152,7 @@ COLORS = {"GD": "#e8590c", "Momentum": "#2f9e44", "NAG": "#1971c2", "Adagrad": "
 
 
 def make(name, fn=None, lr=None, **kw):
-    """이름으로 옵티마이저를 만든다. lr을 안 주면 손실 함수 fn의 기본 학습률을 쓴다."""
+    """Create an optimizer by name. Without lr, use the default learning rate of loss function fn."""
     cls = OPTIMIZERS[name]
     if lr is None:
         lr = fn.adaptive_lr if cls.adaptive else fn.lr
@@ -160,8 +160,8 @@ def make(name, fn=None, lr=None, **kw):
 
 
 def run(optimizer, fn, start, steps):
-    """start에서 steps번 업데이트한 경로를 (steps+1, ..., 2) 배열로 돌려준다.
-    발산하면(값이 inf/nan이 되거나 너무 커지면) 그 뒤는 nan으로 남긴다."""
+    """Run `steps` updates from `start` and return the path as an array of shape (steps+1, ..., 2).
+    If a run diverges (inf/nan or very large values), the rest of its path is left as nan."""
     optimizer.reset()
     theta = np.array(start, dtype=float)
     path = np.full((steps + 1,) + theta.shape, np.nan)

@@ -1,8 +1,10 @@
-"""시각화에 쓰는 2변수 손실 함수들.
+"""Two-variable loss functions used for the visualizations.
 
-보고서와 같이 sympy로 식을 적고 편미분을 자동으로 구하지만, 실제 계산은 lambdify한 numpy 함수로 한다.
-(원본은 매 스텝 subs로 기호 계산을 해서 느렸다.)
-임계점도 그래디언트 = 0 을 풀고 헤시안의 고윳값으로 극소/안장점을 자동 분류한다.
+As in the report, each function is written with sympy and its partial derivatives are derived
+automatically, but the actual computation uses lambdified numpy functions.
+(The original code ran a symbolic `subs` at every step, which was slow.)
+Critical points are found by solving grad = 0 and classified as minimum / saddle / maximum
+from the eigenvalues of the Hessian.
 """
 from dataclasses import dataclass, field
 
@@ -21,10 +23,10 @@ class LossFunction:
     xlim: tuple
     ylim: tuple
     start: tuple
-    lr: float  # GD 계열 기본 학습률
-    adaptive_lr: float = None  # Adagrad/RMSProp/Adam 계열 기본 학습률 (None이면 lr과 같음)
+    lr: float  # default learning rate for GD-type optimizers
+    adaptive_lr: float = None  # default learning rate for Adagrad/RMSProp/Adam-type optimizers (None: same as lr)
     steps: int = 500
-    minima: list = field(init=False)  # [(x, y, f값)]  f값 오름차순
+    minima: list = field(init=False)  # [(x, y, f)] sorted by f
     saddles: list = field(init=False)
     maxima: list = field(init=False)
 
@@ -62,13 +64,13 @@ class LossFunction:
     def grad(self, theta):
         theta = np.asarray(theta, dtype=float)
         x, y = theta[..., 0], theta[..., 1]
-        # 미분 결과가 상수이면 lambdify가 스칼라를 돌려주므로 모양을 맞춰준다
+        # lambdify returns a scalar when a derivative is constant, so broadcast it to the right shape
         return np.stack([np.broadcast_to(self._gx(x, y), x.shape),
                          np.broadcast_to(self._gy(x, y), x.shape)], axis=-1).astype(float)
 
     def which_minimum(self, theta, tol=0.05):
-        """theta가 어느 극소점에 수렴했는지. 0이 최솟값, 가장 가까운 극소점과 tol 이상 떨어져 있으면 -1
-        (함숫값이 최솟값과 같은 극소점이 여러 개면 모두 0)"""
+        """Index of the minimum theta has converged to: 0 is the global minimum, -1 means farther than tol
+        from every minimum. (If several minima share the lowest value, all of them count as 0.)"""
         theta = np.asarray(theta, dtype=float)
         mins = np.array([m[:2] for m in self.minima])
         dist = np.linalg.norm(theta[..., None, :] - mins, axis=-1)

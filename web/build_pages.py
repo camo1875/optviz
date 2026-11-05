@@ -1,9 +1,9 @@
-"""web/app.html 을 GitHub Pages용 완전한 HTML 문서(docs/index.html)로 만든다.
+"""Turn web/app.html into a complete HTML document for GitHub Pages (docs/index.html).
 
-app.html 은 <html>/<head>/<body> 없이 내용만 담고 있다 (claude.ai 아티팩트로도 그대로 올리기 위해).
-여기서 첫 <style> 앞부분(title, meta, link)은 <head>로, 나머지는 <body>로 감싼다.
+app.html holds only the page content, without <html>/<head>/<body>.
+Everything before the first <style> (title, meta, link) goes into <head>, the rest into <body>.
 
-사용법:  python web/build_pages.py
+Usage:  python web/build_pages.py
 """
 from pathlib import Path
 
@@ -36,7 +36,7 @@ def main():
     cut = src.index("<style>")
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(SKELETON.format(head=src[:cut].strip(), body=src[cut:].strip()), encoding="utf-8")
-    (OUT.parent / ".nojekyll").touch()  # GitHub Pages가 파일을 가공하지 않도록
+    (OUT.parent / ".nojekyll").touch()  # keep GitHub Pages from processing the files
     print(f"wrote {OUT.relative_to(ROOT)}")
 
 

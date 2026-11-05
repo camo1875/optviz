@@ -1,7 +1,7 @@
-# 4.6. 옵티마이저들의 시각화
-# 보고서 30~36쪽 코드를 그대로 옮겨 복원한 것.
-# 실행이 안 되는 부분만 최소한으로 고쳤고, 고친 곳에는 [복원 수정] 주석을 달았다.
-# 동작상의 문제(버그)는 일부러 고치지 않고 [알려진 문제] 주석으로 표시했다. -> 개량판은 optviz/ 참고
+# 4.6. Visualizing the optimizers
+# Restored from the report's code (pp.30-36), copied as printed.
+# Only what prevented it from running was fixed; those lines are marked [restoration fix].
+# Bugs that change the results were deliberately left in and marked [known issue]. See optviz/ for the improved version.
 
 import random
 import time
@@ -10,22 +10,22 @@ import sympy as sp
 import matplotlib
 import matplotlib.pyplot as plt
 
-#목표 함수 설정
+# target function
 x, y = sp.symbols('x y')
-target_f = x**4 - 1/2*x**3 - 3/4*x**2 - 1/8*x + y**2 - 1/2  # [복원 수정] '–'(en dash) -> '-'
+target_f = x**4 - 1/2*x**3 - 3/4*x**2 - 1/8*x + y**2 - 1/2  # [restoration fix] '–' (en dash) -> '-'
 dfx = sp.diff(target_f, x)
 dfy = sp.diff(target_f, y)
 
 
-# [알려진 문제] 매 호출마다 sympy의 subs로 기호 계산을 해서 매우 느리고,
-#              결과가 sympy Float(object dtype) 배열이다.
+# [known issue] every call does a symbolic sympy subs, which is very slow,
+#               and returns an array of sympy Floats (object dtype).
 def Gradient(point):
   dx = dfx.subs({x: point[0], y: point[1]})
   dy = dfy.subs({x: point[0], y: point[1]})
   return np.array([dx, dy])
 
 
-f_lambdified = sp.lambdify((x, y), target_f, 'numpy')  #이후 계산을 위한 람다화
+f_lambdified = sp.lambdify((x, y), target_f, 'numpy')  # lambdify for the computations below
 
 start_point = np.array([-0.9, 0.5])
 EPOCH = 500
@@ -34,15 +34,15 @@ EPSILON = 10**-8
 MOMENTUM_MOMENT = 0.9
 RMSP_GAMMA = 0.9
 ADAM_GAMMA = 0.999
-ADAM_MOMENT = 0.9  # 보고서 37쪽: 0.99로 바꾸면 Adam이 최솟값을 찾아간다
+ADAM_MOMENT = 0.9  # report p.37: with 0.99 Adam reaches the global minimum
 doGD, doMoment, doNAG, doAdagrad, doRMSP, doAdam = 1, 1, 1, 1, 1, 1
 
-#3차원상 기존함수 처리
+# draw the function in 3D
 plt.ion()
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-# [알려진 문제] [-5, 5] 범위에서는 z가 최대 약 600까지 커져서,
-#              실제 경로가 움직이는 [-1, 1] 근처가 거의 보이지 않는다.
+# [known issue] on [-5, 5] z grows to about 600, so the region around [-1, 1]
+#               where the paths actually move is barely visible.
 x_map = np.linspace(-5, 5, 20)
 y_map = np.linspace(-5, 5, 20)
 x_grid, y_grid = np.meshgrid(x_map, y_map)
@@ -51,7 +51,7 @@ ax.plot_surface(x_grid, y_grid, z_vals, alpha=0.1)
 ax.set_xlim((-5, 5))
 ax.set_ylim((-5, 5))
 
-#데이터 처리
+# path data
 if doGD:
   gradient_delta = np.empty((EPOCH, 2))
   gradient_sets = np.empty((1, 2))
@@ -114,8 +114,8 @@ for e in range(EPOCH):
       momentum_sets[0] = start_point+momentum_delta[0]
     if doNAG:
       nag_delta[0] = -Gradient(start_point)*ETA
-      # [알려진 문제] nag_delta가 아니라 momentum_delta를 쓴다.
-      #              doMoment = 0이면 초기화되지 않은 값을 쓰게 된다.
+      # [known issue] uses momentum_delta instead of nag_delta.
+      #               With doMoment = 0 this reads an uninitialized value.
       nag_sets[0] = start_point+momentum_delta[0]
     if doAdagrad:
       adagrad_g[0] = Gradient(start_point)*Gradient(start_point)
@@ -199,8 +199,8 @@ for e in range(EPOCH):
   fig.canvas.flush_events()
   time.sleep(0.05)
 
-# [복원 수정] 보고서 코드에는 없음. 반복이 끝난 뒤 창이 바로 닫히지 않도록 추가
-print("최종 위치")
+# [restoration fix] not in the report: keeps the window open after the loop ends
+print("final positions")
 for name, on, sets in [("GD", doGD, "gradient_sets"), ("Momentum", doMoment, "momentum_sets"),
                        ("NAG", doNAG, "nag_sets"), ("AdaGrad", doAdagrad, "adagrad_sets"),
                        ("RMSProp", doRMSP, "rmsprop_sets"), ("Adam", doAdam, "adam_sets")]:

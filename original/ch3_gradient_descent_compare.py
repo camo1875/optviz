@@ -1,28 +1,28 @@
-# 3.5. 선형 회귀에서 경사 하강법들의 비교
-# 보고서 19~25쪽 코드를 그대로 옮겨 복원한 것.
-# 실행이 안 되는 부분만 최소한으로 고쳤고, 고친 곳에는 [복원 수정] 주석을 달았다.
-# 동작상의 문제(버그)는 일부러 고치지 않고 [알려진 문제] 주석으로 표시했다. -> 개량판은 optviz/ 참고
+# 3.5. Comparing gradient descent methods on linear regression
+# Restored from the report's code (pp.19-25), copied as printed.
+# Only what prevented it from running was fixed; those lines are marked [restoration fix].
+# Bugs that change the results were deliberately left in and marked [known issue]. See optviz/ for the improved version.
 
 import random
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
-x = np.random.rand(12)*5  # 0~5 사이의 12개의 x데이터
-y = 3*x+np.random.randn(12) + 1  # 3x+1로부터 무작위 오차를 준 12개의 y데이터
-# 세 가지 방법의 예측값을 저장하기 위한 공간 마련.
-# y_t[0] : BGD의 예측값, y_t[1] : SGD의 예측값, y_t[2] : mBGD의 예측값
-# [알려진 문제] 0(정수)으로 채워서 dtype이 int가 된다. 이후 저장되는 예측값의 소수점 아래가 잘려
-#              편향 b가 최적값보다 크게 학습된다.
+x = np.random.rand(12)*5  # 12 x values between 0 and 5
+y = 3*x+np.random.randn(12) + 1  # 12 y values: 3x+1 plus random noise
+# storage for the predictions of the three methods
+# y_t[0] : BGD predictions, y_t[1] : SGD predictions, y_t[2] : mBGD predictions
+# [known issue] filled with integer 0, so the dtype is int. Predictions stored later lose their fractional
+#               part, and the bias b is learned larger than the optimum.
 y_t = np.full((3, 12), 0)
 print(f"x:{x}")
 print(f"y:{y}")
 print(f"y_t:{y_t}")
 
-init_w = 0.2  # 가중치 초깃값
-init_b = 0.8  # 편향 초깃값
-w = np.full(3, init_w)  # w[0] : BGD의 가중치, w[1] : SGD의 가중치, w[2] : mBGD의 가중치
-b = np.full(3, init_b)  # b[0] : BGD의 편향, b[1] : SGD의 편향, b[2] : mBGD의 편향
+init_w = 0.2  # initial weight
+init_b = 0.8  # initial bias
+w = np.full(3, init_w)  # w[0] : BGD weight, w[1] : SGD weight, w[2] : mBGD weight
+b = np.full(3, init_b)  # b[0] : BGD bias, b[1] : SGD bias, b[2] : mBGD bias
 EPOCH = 100
 ETA = 0.01
 print(f"w:{w}")
@@ -39,14 +39,14 @@ hist_mBGD_b = []
 def batchW(x, y, y_t):
   err = 0
   for i in range(len(y)):
-    err += -2*(y[i]-y_t[i])*x[i]  # [복원 수정] -2(...) -> -2*(...)
-  return (1/len(y))*err  # [복원 수정] 닫는 괄호 누락
+    err += -2*(y[i]-y_t[i])*x[i]  # [restoration fix] -2(...) -> -2*(...)
+  return (1/len(y))*err  # [restoration fix] missing closing parenthesis
 
 
 def batchB(y, y_t):
   err = 0
   for i in range(len(y)):
-    err += -2*(y[i]-y_t[i])  # [복원 수정] -2(...) -> -2*(...)
+    err += -2*(y[i]-y_t[i])  # [restoration fix] -2(...) -> -2*(...)
   return (1/len(y))*err
 
 
@@ -85,8 +85,8 @@ for e in range(EPOCH):
   mb_count = np.array(mb_count)
   mb_count = np.reshape(mb_count, (int(len(x)/batch_size), batch_size))
   mb_count.tolist
-  # [알려진 문제] 세 방법 모두 한 EPOCH에 12번씩 업데이트한다.
-  #              BGD는 전체 데이터를 12번, mBGD는 같은 미니 배치를 3번씩 보게 된다.
+  # [known issue] all three methods update 12 times per EPOCH, so BGD sees the whole
+  #               data set 12 times and mBGD sees each mini-batch 3 times.
   for j in range(len(y)):
     #BGD
     y_t[0] = w[0]*x+b[0]

@@ -1,8 +1,9 @@
-"""보고서의 결론을 '한 번의 실행'이 아니라 여러 조건에서 확인해보는 실험들.
+"""Experiments that check the report's conclusions over many settings instead of a single run.
 
-보고서는 시작점 (-0.9, 0.5), η = 0.01 한 가지 조건에서 Adam(β1=0.9)이 극솟값에 갇히고
-β1=0.99로 바꾸면 최솟값을 찾는다는 결론을 냈다. 아래 실험으로 그 결론이 시작점과 하이퍼파라미터에
-얼마나 의존하는지 볼 수 있다. 옵티마이저가 벡터화되어 있어 수만 개의 조건을 한 번에 돌린다.
+The report used one setting (start (-0.9, 0.5), η = 0.01) and concluded that Adam (β1 = 0.9) gets stuck in
+the local minimum and finds the global minimum with β1 = 0.99. These experiments show how much that depends
+on the start point and the hyperparameters. The optimizers are vectorized, so tens of thousands of
+settings run at once.
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,7 +12,7 @@ from matplotlib.colors import ListedColormap
 from . import optimizers as O
 from .visualize import draw_contour
 
-# 도착 결과별 색: 수렴 못함, 최솟값, 극솟값 #1, #2, ...
+# colors per outcome: not converged, global min, local min #1, #2, ...
 RESULT_COLORS = ["#ced4da", "#40c057", "#fa5252", "#fd7e14", "#7950f2"]
 
 
@@ -26,13 +27,13 @@ def _result_labels(fn):
 
 
 def _final_result(fn, path):
-    """경로 끝이 어느 극소점인지 (+1 해서 0이 '수렴 못함'이 되게)"""
+    """Which minimum the path ends at, shifted by +1 so that 0 means 'not converged'."""
     last = np.where(np.isfinite(path[-1]), path[-1], 1e9)
     return fn.which_minimum(last) + 1
 
 
 def beta1_paths(fn, betas=(0.8, 0.9, 0.95, 0.99), lr=None, steps=None, start=None):
-    """보고서 37쪽 실험: Adam의 β1만 바꿔가며 경로를 비교한다."""
+    """Report p.37 experiment: compare Adam paths while changing only β1."""
     steps = steps or fn.steps
     start = fn.start if start is None else start
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -53,7 +54,7 @@ def beta1_paths(fn, betas=(0.8, 0.9, 0.95, 0.99), lr=None, steps=None, start=Non
 
 
 def basin_map(fn, names=O.REPORT_OPTIMIZERS, res=121, steps=None):
-    """모든 시작점에 대해, 각 옵티마이저가 최종적으로 어느 극소점에 도착하는지 색칠한다."""
+    """For every start point, color the minimum each optimizer finally reaches."""
     steps = steps or fn.steps
     xs, ys = np.linspace(*fn.xlim, res), np.linspace(*fn.ylim, res)
     starts = np.stack(np.meshgrid(xs, ys), axis=-1).reshape(-1, 2)
@@ -83,11 +84,11 @@ def basin_map(fn, names=O.REPORT_OPTIMIZERS, res=121, steps=None):
 
 
 def hparam_map(fn, name="Adam", param="beta1", values=None, lrs=None, steps=None, start=None):
-    """학습률 × 하이퍼파라미터(기본: Adam의 β1) 조합마다 도착 결과를 색칠한다.
-    보고서의 'β1 = 0.9 → 0.99' 결과가 학습률이 달라져도 성립하는지 볼 수 있다."""
+    """Color the outcome for every (learning rate, hyperparameter) pair (default: Adam's β1).
+    Shows whether the report's 'β1 = 0.9 → 0.99' result still holds at other learning rates."""
     steps = steps or fn.steps
     start = fn.start if start is None else start
-    # β1 = 0.9, 0.99, 0.999 처럼 1에 가까운 값이 중요하므로 1-β1을 로그 간격으로 잡는다
+    # values close to 1 (0.9, 0.99, 0.999) matter most, so space 1-β1 logarithmically
     values = 1 - np.geomspace(1, 2e-3, 120) if values is None else np.asarray(values)
     lrs = np.geomspace(1e-3, 0.3, 120) if lrs is None else np.asarray(lrs)
     V, L = np.meshgrid(values, lrs)

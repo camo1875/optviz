@@ -1,10 +1,11 @@
-"""옵티마이저 경로 시각화: 3D 곡면 + 2D 등고선 + 손실 그래프를 한 화면에.
+"""Optimizer path plots: 3D surface + top-view contours + loss gap in one figure.
 
-원본(4.6)과 달라진 점
-- 경로가 실제로 움직이는 영역만 그려서 경로가 잘 보인다 (원본은 [-5,5]라 z가 600까지 커졌다)
-- 위에서 내려다본 등고선과 최솟값/극솟값/안장점 표시를 추가했다
-- 스텝별 f(Θ_n) - f_min 을 로그 스케일로 그려서 수렴 속도를 비교할 수 있다
-- plt.ion + time.sleep 대신 FuncAnimation을 써서 GIF/MP4로 저장할 수 있다
+Changes from the original (report 4.6)
+- Only the region the paths actually visit is drawn, so the paths are visible
+  (the original used [-5, 5], where z grows to about 600)
+- Top-view contour map with the global minimum / local minima / saddle points marked
+- f(Θ_n) - f_min per step on a log scale, to compare convergence speed
+- FuncAnimation instead of plt.ion + time.sleep, so the animation can be saved as GIF/MP4
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,9 +22,9 @@ def grid(fn, res=120):
 
 
 def draw_contour(ax, fn, res=200):
-    """등고선과 임계점을 그린다. 다른 그림(experiments.py)에서도 쓴다."""
+    """Draw contours and critical points. Also used by experiments.py."""
     gx, gy, z = grid(fn, res)
-    # 낮은 곳의 등고선이 촘촘하도록 분위수로 높이를 고른다
+    # pick levels by quantile so contours are denser near the bottom
     levels = np.unique(np.quantile(z, np.linspace(0, 1, 30) ** 2))
     ax.contourf(gx, gy, z, levels=levels, cmap="Greys_r", alpha=0.35)
     ax.contour(gx, gy, z, levels=levels, colors="grey", linewidths=0.4, alpha=0.6)
@@ -43,7 +44,7 @@ def draw_contour(ax, fn, res=200):
 
 
 class Scene:
-    """경로들을 n번째 스텝까지 그리는 그림. update(n)을 바꿔가며 부르면 애니메이션이 된다."""
+    """Figure that draws every path up to step n. Calling update(n) with increasing n animates it."""
 
     def __init__(self, fn, paths, title=None):
         self.fn, self.paths = fn, paths
@@ -113,7 +114,7 @@ def save_animation(anim, path, fps=30):
 
 
 def summarize(fn, paths):
-    """각 옵티마이저가 어디에 도착했는지 표로 출력한다."""
+    """Print a table of where each optimizer ended up."""
     names = {0: "global min"} | {i: f"local min #{i}" for i in range(1, len(fn.minima))} | {-1: "not converged"}
     print(f"{'optimizer':10s} {'final x':>9s} {'final y':>9s} {'f - f_min':>10s}  result")
     for name, p in paths.items():
