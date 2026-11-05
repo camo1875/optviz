@@ -434,14 +434,15 @@ function setPlaying(on) {
   playing = on;
   if (on && k >= S.steps) k = 0;
   el.play.textContent = on ? "Pause" : (k >= S.steps ? "Replay" : "Play");
-  if (on) { lastT = performance.now(); requestAnimationFrame(tick); }
+  if (on) { lastT = null; requestAnimationFrame(tick); }
 }
 
 function tick(now) {
   if (!playing) return;
-  const dt = Math.min((now - lastT) / 1000, 0.1);
+  // the first frame's timestamp can be earlier than the click, so time from the first frame and never go below 0
+  const dt = lastT === null ? 0 : Math.min(Math.max((now - lastT) / 1000, 0), 0.1);
   lastT = now;
-  k = Math.min(S.steps, k + dt * (S.steps / 10) * +el.speed.value); // 1×: whole run in about 10 s
+  k = Math.min(S.steps, Math.max(0, k + dt * (S.steps / 10) * +el.speed.value)); // 1×: whole run in about 10 s
   if (k >= S.steps) setPlaying(false);
   draw();
   if (playing) requestAnimationFrame(tick);
